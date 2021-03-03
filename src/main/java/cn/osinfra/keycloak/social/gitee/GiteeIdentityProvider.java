@@ -23,7 +23,7 @@ public class GiteeIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth2
     public static final String TOKEN_URL = "https://gitee.com/oauth/token";
     public static final String PROFILE_URL = "https://gitee.com/api/v5/user";
     public static final String EMAIL_URL = "https://gitee.com/api/v5/emails";
-    public static final String DEFAULT_SCOPE = "user_info";
+    public static final String DEFAULT_SCOPE = "user_info emails";
     public static final String PRIMARY_EMAIL_SCOPE = "primary";
 
     public GiteeIdentityProvider(KeycloakSession session, OAuth2IdentityProviderConfig config) {
@@ -53,7 +53,6 @@ public class GiteeIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth2
         user.setEmail(getJsonProperty(profile, "email"));
         user.setIdpConfig(getConfig());
         user.setIdp(this);
-
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
 
         return user;
@@ -74,27 +73,28 @@ public class GiteeIdentityProvider extends AbstractOAuth2IdentityProvider<OAuth2
 
             return user;
         } catch (Exception e) {
-            throw new IdentityBrokerException("Could not obtain user profile from gitee.", e);
+            throw new IdentityBrokerException("Could not obtain user profile from gitee. error:" + e.getMessage(), e);
         }
     }
 
     private String searchEmail(String accessToken) {
+
         try {
             ArrayNode emails = (ArrayNode) SimpleHttp.doGet(EMAIL_URL, session).header("Authorization", "Bearer " + accessToken).asJson();
-
             Iterator<JsonNode> loop = emails.elements();
             while (loop.hasNext()) {
                 JsonNode mail = loop.next();
-                Iterator<JsonNode> scopes = emails.elements();
-                while (scopes.hasNext()) {
-                    String s = scopes.next().toString();
-                    if (s.equals(PRIMARY_EMAIL_SCOPE)) {
-                        return getJsonProperty(mail, "email");
+                JsonNode scopes = mail.get("scope");
+                if (scopes != null && scopes.isArray()) {
+                    for (JsonNode s : scopes) {
+                        if (s.asText().equals(PRIMARY_EMAIL_SCOPE)) {
+                            return getJsonProperty(mail, "email");
+                        }
                     }
                 }
             }
         } catch (Exception e) {
-            throw new IdentityBrokerException("Could not obtain user email from gitee.", e);
+            throw new IdentityBrokerException("Could not obtain user email from gitee. error:" + e.getMessage(), e);
         }
         throw new IdentityBrokerException("Primary email from gitee is not found.");
     }
